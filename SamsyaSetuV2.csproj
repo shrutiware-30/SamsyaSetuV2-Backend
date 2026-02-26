@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="G2CCRMPortal.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.1.0" />
+    <PackageReference Include="GeoCoordinate.NetCore" Version="1.0.0.1" />
+    <PackageReference Include="Hangfire.AspNetCore" Version="1.8.23" />
+    <PackageReference Include="Hangfire.Core" Version="1.8.23" />
+    <PackageReference Include="Hangfire.SqlServer" Version="1.8.23" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.1.4" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.1.4" />
+  </ItemGroup>
+
+</Project>
