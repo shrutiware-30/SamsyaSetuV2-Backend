@@ -142,3 +142,4 @@ PRINT 'Seed data inserted successfully.';
 GO
 
 select * from IssueRequest
+select * from Users

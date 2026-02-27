@@ -142,6 +142,62 @@ public class IssueRequestController : ControllerBase
         return Ok(new { status = "success", data = issue });
     }
 
+    /// <summary>
+    /// GET /api/v1/issues/nearby?latitude=..&amp;longitude=..&amp;radiusMeters=200&amp;artifactId=..
+    /// Returns active issues of the same artifact type within the given radius.
+    /// </summary>
+    [HttpGet("nearby")]
+    [Authorize(Roles = "Citizen")]
+    public async Task<IActionResult> GetNearbyIssues(
+        [FromQuery] double latitude,
+        [FromQuery] double longitude,
+        [FromQuery] int radiusMeters = 200,
+        [FromQuery] int artifactId = 0)
+    {
+        if (artifactId <= 0)
+            return BadRequest(new { status = "fail", message = "artifactId is required." });
+
+        string[] activeStatuses = ["Submitted", "Assigned", "InProgress"];
+
+        var nearbyIssues = await _db.IssueRequests
+            .Where(i => i.ArtifactId == artifactId
+                     && activeStatuses.Contains(i.Status))
+            .Select(i => new
+            {
+                i.Id,
+                i.Description,
+                i.Status,
+                i.Priority,
+                i.Latitude,
+                i.Longitude,
+                i.LocationText,
+                i.CreatedAt,
+                Artifact = i.Artifact.Name,
+                Category = i.Artifact.Category,
+                DistanceMeters = 6371000.0 * 2.0 * Math.Atan2(
+                    Math.Sqrt(
+                        Math.Pow(Math.Sin(((double)i.Latitude - latitude) * Math.PI / 180.0 / 2.0), 2) +
+                        Math.Cos(latitude * Math.PI / 180.0) *
+                        Math.Cos((double)i.Latitude * Math.PI / 180.0) *
+                        Math.Pow(Math.Sin(((double)i.Longitude - longitude) * Math.PI / 180.0 / 2.0), 2)
+                    ),
+                    Math.Sqrt(
+                        1.0 - (
+                            Math.Pow(Math.Sin(((double)i.Latitude - latitude) * Math.PI / 180.0 / 2.0), 2) +
+                            Math.Cos(latitude * Math.PI / 180.0) *
+                            Math.Cos((double)i.Latitude * Math.PI / 180.0) *
+                            Math.Pow(Math.Sin(((double)i.Longitude - longitude) * Math.PI / 180.0 / 2.0), 2)
+                        )
+                    )
+                )
+            })
+            .Where(i => i.DistanceMeters <= radiusMeters)
+            .OrderBy(i => i.DistanceMeters)
+            .ToListAsync();
+
+        return Ok(new { status = "success", results = nearbyIssues.Count, data = nearbyIssues });
+    }
+
     // PATCH api/v1/issues/{id}/assign — Admin assigns officer
     [HttpPatch("{id:guid}/assign")]
     [Authorize(Roles = "Admin")]
