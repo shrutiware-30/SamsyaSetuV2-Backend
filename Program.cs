@@ -48,8 +48,11 @@ namespace SamsyaSetuV2
             builder.Services.AddAuthorization();
 
             // ── Services ──────────────────────────────────────────────────
+            builder.Services.AddMemoryCache();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IEmailService, EmailService>();
+            builder.Services.AddSingleton<ISmsService, SmsService>();
+            builder.Services.AddSingleton<IOtpService, OtpService>();
 
             // ── CORS (React frontend) ────────────────────────────────────
             builder.Services.AddCors(options =>
