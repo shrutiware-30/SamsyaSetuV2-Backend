@@ -34,6 +34,40 @@ public class WardController : ControllerBase
         return Ok(new { status = "success", data = ward });
     }
 
+    // GET api/v1/wards/{wardId}/officers
+    [HttpGet("{wardId:int}/officers")]
+    public async Task<IActionResult> GetWardOfficers(int wardId)
+    {
+        var ward = await _db.Wards.FindAsync(wardId);
+        if (ward is null) return NotFound();
+
+        var officers = await _db.Users
+            .Where(u => u.Role == "Officer" && u.WardId == wardId)
+            .Select(u => new
+            {
+                u.Id,
+                u.Name,
+                email = u.Email,
+                phone = u.MobileNumber
+            })
+            .ToListAsync();
+
+        return Ok(new { status = "success", data = officers });
+    }
+
+    // GET api/v1/wards/{wardId}/issue-stats
+    [HttpGet("{wardId:int}/issue-stats")]
+    public async Task<IActionResult> GetWardIssueStats(int wardId)
+    {
+        var ward = await _db.Wards.FindAsync(wardId);
+        if (ward is null) return NotFound();
+
+        var totalAssigned = await _db.IssueRequests.CountAsync(i => i.WardId == wardId);
+        var totalCompleted = await _db.IssueRequests.CountAsync(i => i.WardId == wardId && i.Status == "Resolved");
+
+        return Ok(new { status = "success", data = new { totalAssigned, totalCompleted } });
+    }
+
     // POST api/v1/wards
     [HttpPost]
     [Authorize(Roles = "Admin")]
