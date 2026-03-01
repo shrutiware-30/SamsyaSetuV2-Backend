@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace G2CCRMPortal.DTOs.IssueRequest;
 
@@ -19,9 +20,9 @@ public class CreateIssueRequestDto
     [MaxLength(255)]
     public string? LocationText { get; set; }
 
-    [MaxLength(500)]
-    public string? ImageUrl { get; set; }
-
     [MaxLength(10)]
     public string Priority { get; set; } = "Medium";
+
+    // File upload instead of ImageUrl string
+    public IFormFile? ImageFile { get; set; }
 }

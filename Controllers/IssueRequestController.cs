@@ -2,6 +2,7 @@ using System.Security.Claims;
 using G2CCRMPortal.Data;
 using G2CCRMPortal.DTOs.IssueRequest;
 using G2CCRMPortal.Models;
+using G2CCRMPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,22 +15,23 @@ namespace G2CCRMPortal.Controllers;
 public class IssueRequestController : ControllerBase
 {
     private readonly G2CCrmDbContext _db;
+    private readonly IUploadService _uploadService;
 
-    public IssueRequestController(G2CCrmDbContext db)
+    public IssueRequestController(G2CCrmDbContext db, IUploadService uploadService)
     {
         _db = db;
+        _uploadService = uploadService;
     }
 
     // POST api/v1/issues — citizen creates a complaint
     [HttpPost]
     [Authorize(Roles = "Citizen")]
-    public async Task<IActionResult> Create([FromBody] CreateIssueRequestDto dto)
+    public async Task<IActionResult> Create([FromForm] CreateIssueRequestDto dto)
     {
         var artifact = await _db.Artifacts.FindAsync(dto.ArtifactId);
         if (artifact is null || !artifact.IsActive)
             return BadRequest(new { status = "fail", message = "Invalid artifact." });
 
-        // Resolve nearest ward using Geolib on the client — WardId sent or looked up
         var ward = await _db.Wards
             .OrderBy(w => Math.Abs((double)(w.Latitude - dto.Latitude)) +
                           Math.Abs((double)(w.Longitude - dto.Longitude)))
@@ -37,6 +39,20 @@ public class IssueRequestController : ControllerBase
 
         if (ward is null)
             return BadRequest(new { status = "fail", message = "No ward found." });
+
+        // Handle file upload if provided
+        string? imageUrl = null;
+        if (dto.ImageFile != null)
+        {
+            try
+            {
+                imageUrl = await _uploadService.UploadImageAsync(dto.ImageFile);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { status = "fail", message = ex.Message });
+            }
+        }
 
         var now = DateTime.UtcNow;
         var issue = new IssueRequest
@@ -47,7 +63,7 @@ public class IssueRequestController : ControllerBase
             Latitude = dto.Latitude,
             Longitude = dto.Longitude,
             LocationText = dto.LocationText,
-            ImageUrl = dto.ImageUrl,
+            ImageUrl = imageUrl,
             Priority = dto.Priority,
             Status = "Submitted",
             WardId = ward.Id,

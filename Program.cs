@@ -48,21 +48,22 @@ namespace SamsyaSetuV2
             builder.Services.AddAuthorization();
 
             // ── Services ──────────────────────────────────────────────────
-            builder.Services.AddMemoryCache();
-            builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IEmailService, EmailService>();
-            builder.Services.AddSingleton<ISmsService, SmsService>();
-            builder.Services.AddSingleton<IOtpService, OtpService>();
+            builder.Services.AddScoped<ISmsService, SmsService>();
+            builder.Services.AddScoped<IOtpService, OtpService>();
+            builder.Services.AddScoped<IJwtService, JwtService>();
+            builder.Services.AddScoped<IUploadService, UploadService>();
+            builder.Services.AddHttpClient<ILocationService, LocationService>();
+            builder.Services.AddMemoryCache();
 
-            // ── CORS (React frontend) ────────────────────────────────────
+            builder.Services.AddControllers();
             builder.Services.AddCors(options =>
             {
-                options.AddPolicy("AllowReactApp", policy =>
+                options.AddPolicy("AllowAll", policy =>
                 {
-                    policy.WithOrigins(builder.Configuration["App:ClientUrl"]!)
-                          .AllowAnyHeader()
+                    policy.AllowAnyOrigin()
                           .AllowAnyMethod()
-                          .AllowCredentials();
+                          .AllowAnyHeader();
                 });
             });
 
@@ -85,6 +86,8 @@ namespace SamsyaSetuV2
 
             if (!app.Environment.IsDevelopment())
                 app.UseHttpsRedirection();
+
+            app.UseStaticFiles();  // ← ADD THIS LINE
 
             app.UseCors("AllowReactApp");
             app.UseAuthentication();
