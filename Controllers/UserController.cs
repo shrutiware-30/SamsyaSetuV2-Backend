@@ -21,7 +21,7 @@ public class UserController : ControllerBase
         _db = db;
     }
 
-    // GET api/v1/users/me  — mirrors: router.get('/me', getme, getUser)
+    // GET api/v1/users/me — mirrors: router.get('/me', getme, getUser)
     [HttpGet("me")]
     public async Task<IActionResult> GetMe()
     {
@@ -34,7 +34,39 @@ public class UserController : ControllerBase
         return Ok(new { status = "success", data = MapUser(user) });
     }
 
-    // PATCH api/v1/users/updateMe  — mirrors: router.patch('/updateMe', ...)
+    // GET api/v1/users/dashboard — Officer dashboard with assigned issues stats
+    [HttpGet("dashboard")]
+    [Authorize(Roles = "Officer")]
+    public async Task<IActionResult> GetOfficerDashboard()
+    {
+        var userId = GetCurrentUserId();
+        var user = await _db.Users.FindAsync(userId);
+
+        if (user is null || user.Role != "Officer")
+            return Forbid();
+
+        // Get officer's assigned issues
+        var assignedIssues = await _db.IssueRequests
+            .Where(i => i.AssignedToId == userId)
+            .ToListAsync();
+
+        var dashboard = new
+        {
+            OfficerId = user.Id,
+            OfficerName = user.Name,
+            Ward = user.Ward?.Name,
+            TotalAssigned = assignedIssues.Count,
+            Assigned = assignedIssues.Count(i => i.Status == "Assigned"),
+            InProgress = assignedIssues.Count(i => i.Status == "InProgress"),
+            Resolved = assignedIssues.Count(i => i.Status == "Resolved"),
+            ClosedByAdmin = assignedIssues.Count(i => i.Status == "Closed"),
+            BreachedSLA = assignedIssues.Count(i => i.IsBreached)
+        };
+
+        return Ok(new { status = "success", data = dashboard });
+    }
+
+    // PATCH api/v1/users/updateMe — mirrors: router.patch('/updateMe', ...)
     [HttpPatch("updateMe")]
     public async Task<IActionResult> UpdateMe([FromBody] UpdateMeDto dto)
     {
@@ -50,7 +82,7 @@ public class UserController : ControllerBase
         return Ok(new { status = "success", data = MapUser(user) });
     }
 
-    // DELETE api/v1/users/deleteMe  — mirrors: router.delete('/deleteMe', deleteme)
+    // DELETE api/v1/users/deleteMe — mirrors: router.delete('/deleteMe', deleteme)
     [HttpDelete("deleteMe")]
     public async Task<IActionResult> DeleteMe()
     {
@@ -66,7 +98,7 @@ public class UserController : ControllerBase
     // ── Admin-only routes ─────────────────────────────────────
     // mirrors: router.use(authController.restrictTo('admin'))
 
-    // GET api/v1/users  — mirrors: router.get('/', getAllUsers)
+    // GET api/v1/users — mirrors: router.get('/', getAllUsers)
     [HttpGet]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetAll(
@@ -97,7 +129,7 @@ public class UserController : ControllerBase
         });
     }
 
-    // GET api/v1/users/{id}  — mirrors: router.get('/:id', getUser)
+    // GET api/v1/users/{id} — mirrors: router.get('/:id', getUser)
     [HttpGet("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> GetById(Guid id)
@@ -110,7 +142,7 @@ public class UserController : ControllerBase
         return Ok(new { status = "success", data = MapUser(user) });
     }
 
-    // PATCH api/v1/users/{id}  — mirrors: router.patch('/:id', updateuser)
+    // PATCH api/v1/users/{id} — mirrors: router.patch('/:id', updateuser)
     [HttpPatch("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateMeDto dto)
@@ -127,7 +159,7 @@ public class UserController : ControllerBase
         return Ok(new { status = "success", data = MapUser(user) });
     }
 
-    // DELETE api/v1/users/{id}  — mirrors: router.delete('/:id', deleteUser)
+    // DELETE api/v1/users/{id} — mirrors: router.delete('/:id', deleteUser)
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteUser(Guid id)

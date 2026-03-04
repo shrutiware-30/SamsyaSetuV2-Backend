@@ -93,13 +93,19 @@ public class IssueRequestController : ControllerBase
 
         var query = _db.IssueRequests.AsQueryable();
 
-        // Citizens see only their own; Officers see their ward; Admin sees all
-        query = role switch
+        // Citizens see only their own issues
+        // Officers see only issues assigned to them
+        // Admin sees all
+        if (role == "Citizen")
         {
-            "Citizen" => query.Where(i => i.CitizenId == userId),
-            "Officer" => query.Where(i => i.AssignedToId == userId),
-            _ => query
-        };
+            query = query.Where(i => i.CitizenId == userId);
+        }
+        else if (role == "Officer")
+        {
+            // Officers see only issues explicitly assigned to them
+            query = query.Where(i => i.AssignedToId == userId);
+        }
+        // Admin gets all (no filter)
 
         if (!string.IsNullOrEmpty(status)) query = query.Where(i => i.Status == status);
         if (wardId.HasValue) query = query.Where(i => i.WardId == wardId);
@@ -130,6 +136,7 @@ public class IssueRequestController : ControllerBase
                 Ward = i.Ward.Name,
                 i.CitizenId,
                 CitizenName = i.Citizen.Name,
+                AssignedToId = i.AssignedToId,
                 OfficerName = i.AssignedTo != null ? i.AssignedTo.Name : null,
                 i.CreatedAt,
                 i.UpdatedAt
@@ -246,17 +253,22 @@ public class IssueRequestController : ControllerBase
         return Ok(new { status = "success", message = "Officer assigned." });
     }
 
-    // PATCH api/v1/issues/{id}/status — Officer/Admin updates status
+    // PATCH api/v1/issues/{id}/status — Officer updates status (Assigned → InProgress → Resolved)
     [HttpPatch("{id:guid}/status")]
-    [Authorize(Roles = "Officer,Admin")]
+    [Authorize(Roles = "Officer")]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateIssueStatusDto dto)
     {
-        string[] allowed = ["Submitted", "Assigned", "InProgress", "Resolved", "Closed"];
+        string[] allowed = ["Assigned", "InProgress", "Resolved"];
         if (!allowed.Contains(dto.NewStatus))
             return BadRequest(new { status = "fail", message = "Invalid status value." });
 
         var issue = await _db.IssueRequests.FindAsync(id);
         if (issue is null) return NotFound();
+
+        // Ensure officer can only update their own assigned issues
+        var userId = GetCurrentUserId();
+        if (issue.AssignedToId != userId)
+            return Forbid();
 
         var oldStatus = issue.Status;
         issue.Status = dto.NewStatus;
@@ -275,6 +287,37 @@ public class IssueRequestController : ControllerBase
         await _db.SaveChangesAsync();
 
         return Ok(new { status = "success", message = $"Status changed to {dto.NewStatus}." });
+    }
+
+    // PATCH api/v1/issues/{id}/close — Admin closes issue (final step)
+    [HttpPatch("{id:guid}/close")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> CloseIssue(Guid id, [FromBody] UpdateIssueStatusDto dto)
+    {
+        var issue = await _db.IssueRequests.FindAsync(id);
+        if (issue is null) return NotFound(new { status = "fail", message = "Issue not found." });
+
+        // Only allow closing if already Resolved
+        if (issue.Status != "Resolved")
+            return BadRequest(new { status = "fail", message = "Issue must be Resolved before closing." });
+
+        var oldStatus = issue.Status;
+        issue.Status = "Closed";
+        issue.UpdatedAt = DateTime.UtcNow;
+
+        _db.TrackRequests.Add(new TrackRequest
+        {
+            IssueRequestId = issue.Id,
+            ChangedByUserId = GetCurrentUserId(),
+            OldStatus = oldStatus,
+            NewStatus = "Closed",
+            Remarks = dto.Remarks ?? "Issue closed by admin.",
+            ChangedAt = DateTime.UtcNow
+        });
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new { status = "success", message = "Issue closed." });
     }
 
     // GET api/v1/issues/{id}/track — full audit trail
@@ -299,5 +342,5 @@ public class IssueRequestController : ControllerBase
     }
 
     private Guid GetCurrentUserId() =>
-        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier!));
 }
