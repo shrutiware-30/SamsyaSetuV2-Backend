@@ -138,8 +138,107 @@ VALUES
  DATEADD(DAY, -4, GETUTCDATE()), GETUTCDATE(), 5);
 GO
 
+-- ============================================
+-- Remove Duplicate Seed Data (With FK Reassignment)
+-- ============================================
+
+-- 1. Delete TrackRequest duplicates first
+WITH DuplicateTracking AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY IssueRequestId, ChangedByUserId, CAST(ChangedAt AS DATE) ORDER BY ChangedAt ASC) AS rn
+    FROM TrackRequest
+)
+DELETE FROM DuplicateTracking
+WHERE rn > 1;
+
+-- 2. Delete CitizenFeedback duplicates
+WITH DuplicateFeedback AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY IssueRequestId, Id ORDER BY SubmittedAt ASC) AS rn
+    FROM CitizenFeedback
+)
+DELETE FROM DuplicateFeedback
+WHERE rn > 1;
+
+-- 3. Delete IssueRequest duplicates
+WITH DuplicateIssues AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY CitizenId, ArtifactId, CAST(CreatedAt AS DATE) ORDER BY CreatedAt ASC) AS rn
+    FROM IssueRequest
+)
+DELETE FROM DuplicateIssues
+WHERE rn > 1;
+
+-- 4. Reassign TrackRequest records from duplicate users to the kept user
+WITH UserDuplicates AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY Email ORDER BY CreatedAt ASC) AS rn,
+           FIRST_VALUE(Id) OVER (PARTITION BY Email ORDER BY CreatedAt ASC) AS KeptUserId
+    FROM Users
+)
+UPDATE TrackRequest
+SET ChangedByUserId = ud.KeptUserId
+FROM TrackRequest tr
+INNER JOIN UserDuplicates ud ON tr.ChangedByUserId = ud.Id
+WHERE ud.rn > 1;
+
+-- 5. Reassign CitizenFeedback records from duplicate users
+WITH UserDuplicates AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY Email ORDER BY CreatedAt ASC) AS rn,
+           FIRST_VALUE(Id) OVER (PARTITION BY Email ORDER BY CreatedAt ASC) AS KeptUserId
+    FROM Users
+)
+UPDATE CitizenFeedback
+SET UserId = ud.KeptUserId
+FROM CitizenFeedback cf
+INNER JOIN UserDuplicates ud ON cf.Id = ud.Id
+WHERE ud.rn > 1;
+
+-- 6. Now delete duplicate USER entries (by email, keeping the first)
+WITH DuplicateUsers AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY Email ORDER BY CreatedAt ASC) AS rn
+    FROM Users
+)
+DELETE FROM DuplicateUsers
+WHERE rn > 1;
+
+-- 7. Delete duplicate ARTIFACT entries
+WITH DuplicateArtifacts AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY [Name] ORDER BY Id) AS rn
+    FROM Artifact
+)
+DELETE FROM DuplicateArtifacts
+WHERE rn > 1;
+
+-- 8. Delete duplicate WARD entries
+WITH DuplicateWards AS (
+    SELECT *,
+           ROW_NUMBER() OVER (PARTITION BY [Name] ORDER BY Id) AS rn
+    FROM Ward
+)
+DELETE FROM DuplicateWards
+WHERE rn > 1;
+
+-- Verify results
+PRINT '========== FINAL RECORD COUNTS ==========';
+SELECT 'Wards' AS TableName, COUNT(*) AS Count FROM Ward
+UNION ALL
+SELECT 'Artifacts', COUNT(*) FROM Artifact
+UNION ALL
+SELECT 'Users', COUNT(*) FROM Users
+UNION ALL
+SELECT 'IssueRequests', COUNT(*) FROM IssueRequest
+UNION ALL
+SELECT 'TrackRequests', COUNT(*) FROM TrackRequest
+UNION ALL
+SELECT 'CitizenFeedback', COUNT(*) FROM CitizenFeedback
+ORDER BY TableName;
+
 PRINT 'Seed data inserted successfully.';
 GO
 
-select * from IssueRequest
-select * from Users
+SELECT * FROM IssueRequest;
+SELECT * FROM Users;

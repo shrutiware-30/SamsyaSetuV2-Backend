@@ -53,8 +53,12 @@ namespace SamsyaSetuV2
             builder.Services.AddScoped<IOtpService, OtpService>();
             builder.Services.AddScoped<IJwtService, JwtService>();
             builder.Services.AddScoped<IUploadService, UploadService>();
+            builder.Services.AddScoped<ISlaService, SlaService>();
             builder.Services.AddHttpClient<ILocationService, LocationService>();
             builder.Services.AddMemoryCache();
+
+            // ── Background Services ───────────────────────────────────────
+            builder.Services.AddHostedService<SlaBackgroundService>();
 
             builder.Services.AddControllers();
             builder.Services.AddCors(options =>
@@ -87,9 +91,9 @@ namespace SamsyaSetuV2
             if (!app.Environment.IsDevelopment())
                 app.UseHttpsRedirection();
 
-            app.UseStaticFiles();  // ← ADD THIS LINE
+            app.UseStaticFiles();
 
-            app.UseCors("AllowReactApp");
+            app.UseCors("AllowAll");
             app.UseAuthentication();
             app.UseAuthorization();
             app.MapControllers();
