@@ -31,11 +31,11 @@ public class JwtService : IJwtService
             issuer: _config["Jwt:Issuer"],
             audience: _config["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(
-                double.Parse(_config["Jwt:ExpiresInDays"]!)),
+            expires: DateTime.UtcNow.AddMinutes(
+                double.Parse(_config["Jwt:ExpiresInMinutes"]!)),
             signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
         );
-
+      
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

@@ -20,6 +20,7 @@ public class AuthController : ControllerBase
     private readonly ISmsService _sms;
     private readonly IOtpService _otp;
     private readonly IWebHostEnvironment _env;
+    private readonly IConfiguration _config;
 
     public AuthController(
         G2CCrmDbContext db,
@@ -27,7 +28,8 @@ public class AuthController : ControllerBase
         IEmailService email,
         ISmsService sms,
         IOtpService otp,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        IConfiguration config)
     {
         _db = db;
         _jwt = jwt;
@@ -35,6 +37,7 @@ public class AuthController : ControllerBase
         _sms = sms;
         _otp = otp;
         _env = env;
+        _config = config;
     }
 
     // ── Existing endpoints ────────────────────────────────────────
@@ -136,7 +139,8 @@ public class AuthController : ControllerBase
         var hashedToken = Convert.ToHexString(
             SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(resetToken)));
 
-        user.PasswordHash = $"RESET:{hashedToken}:{DateTime.UtcNow.AddMinutes(10):O}|{user.PasswordHash}";
+        // Store only token data, not the original password hash
+        user.PasswordHash = $"RESET|{hashedToken}|{DateTime.UtcNow.AddMinutes(10):O}";
         await _db.SaveChangesAsync();
 
         try
@@ -146,7 +150,8 @@ public class AuthController : ControllerBase
         }
         catch
         {
-            user.PasswordHash = user.PasswordHash.Split('|').Last();
+            // Reset to require password reset on next login
+            user.PasswordHash = string.Empty;
             await _db.SaveChangesAsync();
             return StatusCode(500, new { message = "Error sending email. Try again later." });
         }
@@ -160,14 +165,21 @@ public class AuthController : ControllerBase
             SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(dto.Token)));
 
         var user = await _db.Users.FirstOrDefaultAsync(u =>
-            u.IsActive && u.PasswordHash != null && u.PasswordHash.Contains($"RESET:{hashedToken}:"));
+            u.IsActive && u.PasswordHash != null && u.PasswordHash.StartsWith("RESET|"));
 
         if (user is null)
             return BadRequest(new { message = "Token is invalid or has expired." });
 
-        var parts = user.PasswordHash!.Split('|')[0].Split(':');
+        var parts = user.PasswordHash!.Split('|');
+        if (parts.Length < 3 || !parts[1].Equals(hashedToken, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "Token is invalid." });
+
         if (DateTime.Parse(parts[2]) < DateTime.UtcNow)
+        {
+            user.PasswordHash = string.Empty;
+            await _db.SaveChangesAsync();
             return BadRequest(new { message = "Token has expired." });
+        }
 
         user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
         await _db.SaveChangesAsync();
@@ -260,6 +272,25 @@ public class AuthController : ControllerBase
         if (!_otp.IsVerified("signup", dto.Identifier))
             return BadRequest(new { message = "Identifier not verified. Please verify OTP first." });
 
+        // Validate additional contact based on signup method
+        if (dto.Method == "email" && string.IsNullOrWhiteSpace(dto.AdditionalContactNumber))
+            return BadRequest(new { message = "Mobile number is required for email-based signup." });
+
+        if (dto.Method == "mobile" && string.IsNullOrWhiteSpace(dto.AdditionalEmail))
+            return BadRequest(new { message = "Email is required for mobile-based signup." });
+
+        // Check if additional contact is already registered
+        if (dto.Method == "email")
+        {
+            if (await _db.Users.AnyAsync(u => u.MobileNumber == dto.AdditionalContactNumber && u.IsActive))
+                return BadRequest(new { message = "Mobile number already registered." });
+        }
+        else if (dto.Method == "mobile")
+        {
+            if (await _db.Users.AnyAsync(u => u.Email == dto.AdditionalEmail && u.IsActive))
+                return BadRequest(new { message = "Email already registered." });
+        }
+
         // Prevent duplicate registrations
         var exists = dto.Method == "mobile"
             ? await _db.Users.AnyAsync(u => u.MobileNumber == dto.Identifier && u.IsActive)
@@ -271,8 +302,8 @@ public class AuthController : ControllerBase
         var user = new User
         {
             Name = dto.Name,
-            MobileNumber = dto.Method == "mobile" ? dto.Identifier : null,
-            Email = dto.Method == "email" ? dto.Identifier : null,
+            MobileNumber = dto.Method == "mobile" ? dto.Identifier : dto.AdditionalContactNumber,
+            Email = dto.Method == "email" ? dto.Identifier : dto.AdditionalEmail,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
             Role = "Citizen",
             IsActive = true,
@@ -343,12 +374,13 @@ public class AuthController : ControllerBase
 
     private void SetTokenCookie(string token)
     {
+        var expirationMinutes = double.Parse(_config["Jwt:ExpiresInMinutes"]!);
         Response.Cookies.Append("jwt", token, new CookieOptions
         {
             HttpOnly = true,
             Secure = !_env.IsDevelopment(),
             SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.Strict,
-            Expires = DateTimeOffset.UtcNow.AddDays(7)
+            Expires = DateTimeOffset.UtcNow.AddMinutes(expirationMinutes)
         });
     }
 

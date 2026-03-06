@@ -43,15 +43,24 @@ public class EmailService : IEmailService
 
     private async Task SendAsync(string to, string subject, string body)
     {
-        // TODO: Re-enable when SMTP credentials are configured
         using var smtp = new SmtpClient(_config["Email:Host"],
             int.Parse(_config["Email:Port"]!));
+        smtp.Timeout = 10000; // 10 seconds instead of default 100 seconds
         smtp.Credentials = new NetworkCredential(
             _config["Email:Username"], _config["Email:Password"]);
         smtp.EnableSsl = true;
 
         var message = new MailMessage(_config["Email:From"]!, to, subject, body);
-        await smtp.SendMailAsync(message);
-        //await Task.CompletedTask;
+
+        try
+        {
+            await smtp.SendMailAsync(message);
+        }
+        catch (SmtpException ex)
+        {
+            // Log the specific error - likely authentication failure
+            throw new InvalidOperationException(
+                $"Failed to send email: {ex.Message}. Check SMTP credentials and Gmail app password.", ex);
+        }
     }
 }

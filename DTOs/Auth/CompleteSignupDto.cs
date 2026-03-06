@@ -18,4 +18,12 @@ public class CompleteSignupDto
 
     [Required, Compare(nameof(Password))]
     public string PasswordConfirm { get; set; } = null!;
+
+    // NEW: Required if signup with email (missing mobile number)
+    [MaxLength(15)]
+    public string? AdditionalContactNumber { get; set; }
+
+    // NEW: Required if signup with mobile (missing email)
+    [EmailAddress, MaxLength(100)]
+    public string? AdditionalEmail { get; set; }
 }
