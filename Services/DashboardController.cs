@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace G2CCRMPortal.Controllers;
 
 [ApiController]
-[Route("api/v1/dashboard")]
+[Route("api/v1/issues/dashboard")]
 [Authorize(Roles = "Admin,Officer")]
 public class DashboardController : ControllerBase
 {

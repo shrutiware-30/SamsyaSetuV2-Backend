@@ -224,7 +224,7 @@ public class AuthController : ControllerBase
         Response.Cookies.Append("jwt", "loggedout", new CookieOptions
         {
             HttpOnly = true,
-            Expires = DateTimeOffset.UtcNow.AddSeconds(2)
+            Expires = DateTimeOffset.UtcNow.AddMinutes(30)
         });
         return Ok(new { status = "success" });
     }

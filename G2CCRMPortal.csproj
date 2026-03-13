@@ -15,4 +15,8 @@
     <PackageReference Include="Twilio" Version="7.*" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="wwwroot\uploads\" />
+  </ItemGroup>
+
 </Project>
