@@ -78,28 +78,45 @@ public class AuthController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateStaff([FromBody] AdminSignupDto dto)
     {
-        if (dto.Role is not ("Admin" or "Officer"))
-            return BadRequest(new { status = "fail", message = "Role must be Admin or Officer." });
+        if (dto.Role is not ("Admin"))
+            return BadRequest(new { status = "fail", message = "Role must be Admin" });
 
-        if (dto.Role == "Officer" && dto.WardId is null)
-            return BadRequest(new { status = "fail", message = "WardId is required for Officers." });
+        //if (dto.Role == "Officer" && dto.WardId is null)
+        //    return BadRequest(new { status = "fail", message = "WardId is required for Officers." });
 
         if (await _db.Users.AnyAsync(u => u.Email == dto.Email && u.IsActive))
             return BadRequest(new { status = "fail", message = "Email already registered." });
-
-        var user = new User
+        User user;
+        if (await _db.Users.AnyAsync(u => u.Email == dto.Email && !u.IsActive))
         {
-            Name = dto.Name,
-            Email = dto.Email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = dto.Role,
-            WardId = dto.WardId,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
+            user = await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Email && !u.IsActive);
+            user.Name = dto.Name;
+            user.Email = dto.Email;
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            user.Role = dto.Role;
+            user.WardId = dto.WardId;
+            user.IsActive = true;
+            user.CreatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            user = new User
+            {
+                Name = dto.Name,
+                Email = dto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                Role = dto.Role,
+                WardId = dto.WardId,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
 
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync();
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync();
+        }
+
+
 
         return CreatedAtAction(null, new { status = "success", data = MapUserSummary(user) });
     }
@@ -220,11 +237,13 @@ public class AuthController : ControllerBase
     // GET api/v1/auth/logout
     [HttpGet("logout")]
     public IActionResult Logout()
+
     {
+        var expirationMinutes = double.Parse(_config["Jwt:ExpiresInMinutes"]!);
         Response.Cookies.Append("jwt", "loggedout", new CookieOptions
         {
             HttpOnly = true,
-            Expires = DateTimeOffset.UtcNow.AddMinutes(30)
+            Expires = DateTimeOffset.UtcNow.AddMinutes(expirationMinutes)
         });
         return Ok(new { status = "success" });
     }
@@ -269,48 +288,82 @@ public class AuthController : ControllerBase
     [HttpPost("signup/complete")]
     public async Task<IActionResult> SignupComplete([FromBody] CompleteSignupDto dto)
     {
+
         if (!_otp.IsVerified("signup", dto.Identifier))
             return BadRequest(new { message = "Identifier not verified. Please verify OTP first." });
-
-        // Validate additional contact based on signup method
-        if (dto.Method == "email" && string.IsNullOrWhiteSpace(dto.AdditionalContactNumber))
-            return BadRequest(new { message = "Mobile number is required for email-based signup." });
-
-        if (dto.Method == "mobile" && string.IsNullOrWhiteSpace(dto.AdditionalEmail))
-            return BadRequest(new { message = "Email is required for mobile-based signup." });
-
-        // Check if additional contact is already registered
-        if (dto.Method == "email")
+        User user;
+        if (await _db.Users.AnyAsync(u => u.MobileNumber == dto.Identifier && u.Role == "Citizen" && !u.IsActive))
         {
-            if (await _db.Users.AnyAsync(u => u.MobileNumber == dto.AdditionalContactNumber && u.IsActive))
-                return BadRequest(new { message = "Mobile number already registered." });
+            Console.WriteLine("Enter a MobileNumber");
+            user = await _db.Users.FirstOrDefaultAsync(p => p.MobileNumber == dto.Identifier && !p.IsActive);
+            user.IsActive = true;
+            user.CreatedAt = DateTime.UtcNow;
+            user.Name = dto.Name;
+            user.MobileNumber = dto.Method == "mobile" ? dto.Identifier : dto.AdditionalContactNumber;
+            user.Email = dto.Method == "email" ? dto.Identifier : dto.AdditionalEmail;
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            user.Role = "Citizen";
+
         }
-        else if (dto.Method == "mobile")
+        else if (await _db.Users.AnyAsync(u => u.Email == dto.Identifier && u.Role == "Citizen" && !u.IsActive))
         {
-            if (await _db.Users.AnyAsync(u => u.Email == dto.AdditionalEmail && u.IsActive))
-                return BadRequest(new { message = "Email already registered." });
+            user = await _db.Users.FirstOrDefaultAsync(p => p.Email == dto.Identifier && !p.IsActive);
+            user.IsActive = true;
+            user.CreatedAt = DateTime.UtcNow;
+            user.Name = dto.Name;
+            user.MobileNumber = dto.Method == "mobile" ? dto.Identifier : dto.AdditionalContactNumber;
+            user.Email = dto.Method == "email" ? dto.Identifier : dto.AdditionalEmail;
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            user.Role = "Citizen";
+
         }
 
-        // Prevent duplicate registrations
-        var exists = dto.Method == "mobile"
-            ? await _db.Users.AnyAsync(u => u.MobileNumber == dto.Identifier && u.IsActive)
-            : await _db.Users.AnyAsync(u => u.Email == dto.Identifier && u.IsActive);
 
-        if (exists)
-            return BadRequest(new { message = $"This {dto.Method} is already registered." });
-
-        var user = new User
+        else
         {
-            Name = dto.Name,
-            MobileNumber = dto.Method == "mobile" ? dto.Identifier : dto.AdditionalContactNumber,
-            Email = dto.Method == "email" ? dto.Identifier : dto.AdditionalEmail,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
-            Role = "Citizen",
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
+            // Validate additional contact based on signup method
 
-        _db.Users.Add(user);
+
+            if (dto.Method == "email" && string.IsNullOrWhiteSpace(dto.AdditionalContactNumber))
+                return BadRequest(new { message = "Mobile number is required for email-based signup." });
+
+            if (dto.Method == "mobile" && string.IsNullOrWhiteSpace(dto.AdditionalEmail))
+                return BadRequest(new { message = "Email is required for mobile-based signup." });
+
+
+            // Check if additional contact is already registered
+            if (dto.Method == "email")
+            {
+                if (await _db.Users.AnyAsync(u => u.MobileNumber == dto.AdditionalContactNumber && u.IsActive))
+                    return BadRequest(new { message = "Mobile number already registered." });
+            }
+            else if (dto.Method == "mobile")
+            {
+                if (await _db.Users.AnyAsync(u => u.Email == dto.AdditionalEmail && u.IsActive))
+                    return BadRequest(new { message = "Email already registered." });
+            }
+
+            // Prevent duplicate registrations
+            var exists = dto.Method == "mobile"
+                ? await _db.Users.AnyAsync(u => u.MobileNumber == dto.Identifier && u.IsActive)
+                : await _db.Users.AnyAsync(u => u.Email == dto.Identifier && u.IsActive);
+
+            if (exists)
+                return BadRequest(new { message = $"This {dto.Method} is already registered." });
+
+            user = new User
+            {
+                Name = dto.Name,
+                MobileNumber = dto.Method == "mobile" ? dto.Identifier : dto.AdditionalContactNumber,
+                Email = dto.Method == "email" ? dto.Identifier : dto.AdditionalEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                Role = "Citizen",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            _db.Users.Add(user);
+        }
+
         await _db.SaveChangesAsync();
 
         var token = _jwt.GenerateToken(user);

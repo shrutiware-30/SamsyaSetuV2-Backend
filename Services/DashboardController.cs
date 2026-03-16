@@ -19,11 +19,9 @@ public class DashboardController : ControllerBase
         _logger = logger;
     }
 
-    /// <summary>
-    /// GET /api/v1/dashboard/breached
+    /// GET /api/v1/issues/dashboard/breached
     /// Returns all SLA-breached issues (shown in red on admin dashboard).
     /// Only accessible to Admin and Officer roles.
-    /// </summary>
     [HttpGet("breached")]
     public async Task<IActionResult> GetBreachedIssues()
     {
@@ -37,10 +35,8 @@ public class DashboardController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// GET /api/v1/dashboard/breached/count
+    /// GET /api/v1/issues/dashboard/breached/count
     /// Returns count of breached issues for notification badge.
-    /// </summary>
     [HttpGet("breached/count")]
     public async Task<IActionResult> GetBreachedCount()
     {
@@ -53,10 +49,8 @@ public class DashboardController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// GET /api/v1/dashboard/stats
+    /// GET /api/v1/issues/dashboard/stats
     /// Returns dashboard statistics (total, breached, pending, etc.).
-    /// </summary>
     [HttpGet("stats")]
     public async Task<IActionResult> GetDashboardStats()
     {

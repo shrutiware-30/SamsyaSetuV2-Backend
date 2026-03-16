@@ -1,5 +1,8 @@
-using System.Net;
-using System.Net.Mail;
+using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
+using System.Threading;
+
 
 namespace G2CCRMPortal.Services;
 
@@ -89,39 +92,61 @@ public class EmailService : IEmailService
         await SendEmailAsync(toEmail, subject, body);
     }
 
-    private async Task SendEmailAsync(string toEmail, string subject, string body)
+
+    
+
+private async Task SendEmailAsync(string toEmail, string subject, string bodyHtml, CancellationToken ct = default)
+{
+    var smtpHost = _config["Email:Host"]!;            // e.g., smtp.gmail.com
+    var smtpPort = int.Parse(_config["Email:Port"]!); // 587 or 465
+    var fromEmail = _config["Email:From"]!;
+    var username = _config["Email:Username"]!;       // full Gmail address
+    var password = _config["Email:Password"]!;       // 16-char App Password (not normal pwd)
+
+    // Build the message
+    var message = new MimeMessage();
+    message.From.Add(MailboxAddress.Parse(fromEmail));
+    message.To.Add(MailboxAddress.Parse(toEmail));
+    message.Subject = subject ?? string.Empty;
+
+    var builder = new BodyBuilder { HtmlBody = bodyHtml, TextBody = StripHtml(bodyHtml) };
+    message.Body = builder.ToMessageBody();
+
+    using var client = new SmtpClient (); // 15s total I/O timeout
+
+    // Choose TLS mode based on port
+    var secure = smtpPort == 465 ? SecureSocketOptions.SslOnConnect
+                                 : SecureSocketOptions.StartTls;
+
+    try
     {
-        try
-        {
-            var smtpHost = _config["Email:Host"]!;
-            var smtpPort = int.Parse(_config["Email:Port"]!);
-            var fromEmail = _config["Email:From"]!;
-            var username = _config["Email:Username"]!;
-            var password = _config["Email:Password"]!;
+        // 1) Connect
+        await client.ConnectAsync(smtpHost, smtpPort, secure, ct);
 
-            using (var client = new SmtpClient(smtpHost, smtpPort))
-            {
-                client.EnableSsl = true;
-                client.Credentials = new NetworkCredential(username, password);
+        // 2) If you’re using App Passwords (not OAuth), remove XOAUTH2
+        client.AuthenticationMechanisms.Remove("XOAUTH2");
 
-                var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(fromEmail),
-                    Subject = subject,
-                    Body = body,
-                    IsBodyHtml = true
-                };
+        // 3) Authenticate
+        await client.AuthenticateAsync(username, password, ct);
 
-                mailMessage.To.Add(toEmail);
-
-                await client.SendMailAsync(mailMessage);
-                _logger.LogInformation($"Email sent to {toEmail}: {subject}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error sending email to {toEmail}: {ex.Message}");
-            throw;
-        }
+        // 4) Send
+        await client.SendAsync(message, ct);
+        await client.DisconnectAsync(true, ct);
+        _logger.LogInformation("Email sent to {To}: {Subject}", toEmail, subject);
     }
+    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+    {
+        _logger.LogError("Email send canceled for {To}", toEmail);
+        throw;
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error sending email to {To}", toEmail);
+        throw;
+    }
+}
+
+private static string StripHtml(string html) =>
+    string.IsNullOrWhiteSpace(html) ? string.Empty
+    : System.Text.RegularExpressions.Regex.Replace(html, "<.*?>", " ");
 }

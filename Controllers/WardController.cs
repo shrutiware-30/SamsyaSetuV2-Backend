@@ -42,7 +42,7 @@ public class WardController : ControllerBase
         if (ward is null) return NotFound();
 
         var officers = await _db.Users
-            .Where(u => u.Role == "Officer" && u.WardId == wardId)
+            .Where(u => u.Role == "Officer" && u.WardId == wardId && u.IsActive )
             .Select(u => new
             {
                 u.Id,

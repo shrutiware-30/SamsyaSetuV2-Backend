@@ -16,10 +16,8 @@ public class SlaService : ISlaService
         _logger = logger;
     }
 
-    /// <summary>
     /// Checks all unresolved issues and marks those past SLA deadline as breached.
     /// Sends escalation email to department head (Ward officer) once per breach.
-    /// </summary>
     public async Task CheckAndEscalateSlaBreachesAsync()
     {
         try
@@ -32,7 +30,7 @@ public class SlaService : ISlaService
                 .Where(i => activeStatuses.Contains(i.Status) 
                          && i.SlaDeadline.HasValue 
                          && i.SlaDeadline < now 
-                         && !i.IsBreached)
+                         && i.IsBreached)
                 .Include(i => i.Ward)
                 .Include(i => i.Citizen)
                 .Include(i => i.AssignedTo)
@@ -50,6 +48,12 @@ public class SlaService : ISlaService
             foreach (var issue in breachedIssues)
             {
                 issue.IsBreached = true;
+                if(issue.EscalationSentAt.HasValue)
+                {
+                    // Escalation already sent for this issue, skip to next
+                    _logger.LogInformation($"Issue {issue.Id} already marked as breached and escalation sent at {issue.EscalationSentAt.Value}. Skipping.");
+                    continue;
+                }
                 issue.EscalationSentAt = now;
 
                 try
@@ -90,9 +94,7 @@ public class SlaService : ISlaService
         }
     }
 
-    /// <summary>
     /// Returns all breached issues with metadata for admin dashboard (shown in red).
-    /// </summary>
     public async Task<List<SlaBreachDto>> GetBreachedIssuesAsync()
     {
         var now = DateTime.UtcNow;

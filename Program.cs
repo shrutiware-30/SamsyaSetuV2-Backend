@@ -1,9 +1,10 @@
-using System.Text;
 using G2CCRMPortal.Data;
 using G2CCRMPortal.Services;
+using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 namespace SamsyaSetuV2
 {
@@ -58,6 +59,9 @@ namespace SamsyaSetuV2
             builder.Services.AddMemoryCache();
 
             // ── Background Services ───────────────────────────────────────
+            builder.Services.AddHangfire(config =>
+            config.UseSqlServerStorage(builder.Configuration.GetConnectionString("DefaultConnection")));
+            builder.Services.AddHangfireServer();
             builder.Services.AddHostedService<SlaBackgroundService>();
 
             builder.Services.AddControllers();

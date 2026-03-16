@@ -11,7 +11,8 @@ public class UploadService : IUploadService
     private const long MaxFileSize = 5 * 1024 * 1024; // 5MB
     private static readonly string[] AllowedMimeTypes = 
     { 
-        "image/jpeg", 
+        "image/jpeg",
+        "image/jpg",
         "image/png", 
         "image/webp", 
         "image/gif" 
