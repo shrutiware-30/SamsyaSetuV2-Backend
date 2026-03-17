@@ -1,14 +1,14 @@
 namespace G2CCRMPortal.Services;
 
 /// <summary>
-/// Background service that checks SLA breaches every 24 hours.
+/// Background service that checks SLA breaches every 4 hours.
 /// Runs in the background while the application is running.
 /// </summary>
 public class SlaBackgroundService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SlaBackgroundService> _logger;
-    private readonly TimeSpan _checkInterval = TimeSpan.FromHours(24);
+    private readonly TimeSpan _checkInterval = TimeSpan.FromHours(4);
 
     public SlaBackgroundService(IServiceProvider serviceProvider, ILogger<SlaBackgroundService> logger)
     {
@@ -30,7 +30,7 @@ public class SlaBackgroundService : BackgroundService
                     await slaService.CheckAndEscalateSlaBreachesAsync();
                 }
 
-                // Wait 24 hours before next check
+                // Wait 4 hours before next check
                 await Task.Delay(_checkInterval, stoppingToken);
             }
             catch (OperationCanceledException)
