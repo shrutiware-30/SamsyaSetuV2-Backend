@@ -36,7 +36,12 @@ public class IssueRequestController : ControllerBase
             .OrderBy(w => Math.Abs((double)(w.Latitude - dto.Latitude)) +
                           Math.Abs((double)(w.Longitude - dto.Longitude)))
             .FirstOrDefaultAsync();
+        var hasOfficer = await _db.Users.AnyAsync(u =>
+                u.Role == "Officer" &&
+                u.IsActive &&
+                u.WardId == ward.Id);
 
+        var status = hasOfficer ? "Submitted" : "Submitted";
         if (ward is null)
             return BadRequest(new { status = "fail", message = "No ward found." });
 
@@ -234,6 +239,14 @@ public class IssueRequestController : ControllerBase
             return BadRequest(new { status = "fail", message = "Invalid officer." });
 
         var oldStatus = issue.Status;
+        if (officer.WardId != issue.WardId)
+        {
+            return BadRequest(new
+            {
+                status = "fail",
+                message = "Officer does not belong to the same ward as the issue."
+            });
+        }
         issue.AssignedToId = dto.OfficerId;
         issue.Status = "Assigned";
         issue.UpdatedAt = DateTime.UtcNow;
