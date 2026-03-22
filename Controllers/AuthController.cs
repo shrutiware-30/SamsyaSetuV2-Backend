@@ -78,11 +78,8 @@ public class AuthController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateStaff([FromBody] AdminSignupDto dto)
     {
-        if (dto.Role is not ("Admin"))
-            return BadRequest(new { status = "fail", message = "Role must be Admin" });
-
-        //if (dto.Role == "Officer" && dto.WardId is null)
-        //    return BadRequest(new { status = "fail", message = "WardId is required for Officers." });
+        if (dto.Role == "Officer" && dto.WardId is null)
+            return BadRequest(new { status = "fail", message = "WardId is required for Officers." });
 
         if (await _db.Users.AnyAsync(u => u.Email == dto.Email && u.IsActive))
             return BadRequest(new { status = "fail", message = "Email already registered." });
@@ -375,6 +372,8 @@ public class AuthController : ControllerBase
             Data = MapUserSummary(user)
         });
     }
+
+
 
     // ── OTP-based Login ───────────────────────────────────────────
 

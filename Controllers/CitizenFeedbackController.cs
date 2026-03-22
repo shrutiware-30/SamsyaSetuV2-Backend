@@ -52,21 +52,33 @@ public class CitizenFeedbackController : ControllerBase
         return CreatedAtAction(null, new { status = "success", data = feedback });
     }
 
+
     // GET api/v1/feedback?issueId={id} — get feedback for an issue
+    // GET api/v1/feedback?rating={1-5} — if rating is provided, filter; else return all
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] Guid? issueId)
+    public async Task<IActionResult> Get([FromQuery] int? rating)
     {
+        // Validate rating if provided
+        if (rating.HasValue && (rating.Value < 1 || rating.Value > 5))
+        {
+            return BadRequest(new
+            {
+                status = "fail",
+                message = "Query parameter 'rating' must be an integer between 1 and 5."
+            });
+        }
+
         var query = _db.CitizenFeedbacks.AsQueryable();
 
-        if (issueId.HasValue)
-            query = query.Where(f => f.IssueRequestId == issueId.Value);
+        // Apply filter only when rating is provided
+        if (rating.HasValue)
+            query = query.Where(f => f.Rating == rating.Value);
 
         var feedbacks = await query
             .OrderByDescending(f => f.SubmittedAt)
             .Select(f => new
             {
                 f.Id,
-                f.IssueRequestId,
                 f.Rating,
                 f.Comment,
                 f.SubmittedAt
