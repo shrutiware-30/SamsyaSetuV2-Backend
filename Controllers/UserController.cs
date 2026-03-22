@@ -66,9 +66,9 @@ public class UserController : ControllerBase
         return Ok(new { status = "success", data = dashboard });
     }
 
-    // PATCH api/v1/users/updateMe — mirrors: router.patch('/updateMe', ...)
-    [HttpPatch("updateMe")]
-    public async Task<IActionResult> UpdateMe([FromBody] UpdateMeDto dto)
+    [HttpPatch("updateMyProfile")]
+    //[Authorize(Roles = "Officer")]
+    public async Task<IActionResult> UpdateMeProfile([FromBody] UpdateMeDto dto)
     {
         var user = await _db.Users.FindAsync(GetCurrentUserId());
         if (user is null) return NotFound();
@@ -82,6 +82,86 @@ public class UserController : ControllerBase
         return Ok(new { status = "success", data = MapUser(user) });
     }
 
+    // PATCH api/v1/users/updateMe
+    [HttpPatch("updateMe")]
+    public async Task<IActionResult> UpdateMe([FromBody] UpdateMeDto dto)
+    {
+        var currentUserId = GetCurrentUserId();
+        var user = await _db.Users.FindAsync(currentUserId);
+        if (user is null) return NotFound();
+
+        // Normalize incoming values (optional but recommended)
+        var newEmail = dto.Email?.Trim();
+        var newMobile = dto.MobileNumber?.Trim();
+
+        // 1) If email provided and different from current, check for duplicates
+        if (!string.IsNullOrWhiteSpace(newEmail) && !string.Equals(newEmail, user.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            var emailExists = await _db.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Email == newEmail && u.Id != currentUserId);
+
+            if (emailExists)
+            {
+                return Conflict(new { message = "Email already registered" }); // 409
+            }
+
+            user.Email = newEmail;
+        }
+
+        // 2) If mobile provided and different from current, check for duplicates
+        if (!string.IsNullOrWhiteSpace(newMobile) && !string.Equals(newMobile, user.MobileNumber, StringComparison.OrdinalIgnoreCase))
+        {
+            // (Optional) format validation (India 10-digit starting 6-9)
+            // if (!Regex.IsMatch(newMobile, "^[6-9]\\d{9}$")) {
+            //     return BadRequest(new { message = "Enter a valid 10-digit mobile number" });
+            // }
+
+            var mobileExists = await _db.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.MobileNumber == newMobile && u.Id != currentUserId);
+
+            if (mobileExists)
+            {
+                return Conflict(new { message = "Mobile number already registered" }); // 409
+            }
+
+            user.MobileNumber = newMobile;
+        }
+
+        // 3) Update other fields
+        if (dto.Name is not null) user.Name = dto.Name.Trim();
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            return Ok(new { status = "success", data = MapUser(user) });
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            // Final safety in case of race conditions — DB unique index catches it
+            // Try to surface a specific message if possible
+            var msg = ex.InnerException?.Message ?? ex.Message;
+            if (msg.Contains("Email", StringComparison.OrdinalIgnoreCase))
+                return Conflict(new { message = "Email already registered" });
+
+            if (msg.Contains("MobileNumber", StringComparison.OrdinalIgnoreCase))
+                return Conflict(new { message = "Mobile number already registered" });
+
+            return Conflict(new { message = "Duplicate value not allowed" });
+        }
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        // Provider-specific detection simplified:
+        // SQL Server unique index -> SqlException.Number = 2601 or 2627
+        var msg = ex.InnerException?.Message ?? ex.Message;
+        return msg.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("IX_Users_Email", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("IX_Users_MobileNumber", StringComparison.OrdinalIgnoreCase);
+    }
     // DELETE api/v1/users/deleteMe — mirrors: router.delete('/deleteMe', deleteme)
     [HttpDelete("deleteMe")]
     public async Task<IActionResult> DeleteMe()
@@ -89,7 +169,7 @@ public class UserController : ControllerBase
         var user = await _db.Users.FindAsync(GetCurrentUserId());
         if (user is null) return NotFound();
 
-        user.IsActive = false; // soft delete
+        user.IsActive = false;
         await _db.SaveChangesAsync();
 
         return NoContent();
@@ -107,7 +187,7 @@ public class UserController : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int limit = 20)
     {
-        var query = _db.Users.Where(u => u.IsActive);
+        var query = _db.Users.Where(u => u.IsActive && u.Role!="Admin");
 
         if (!string.IsNullOrEmpty(role)) query = query.Where(u => u.Role == role);
         if (wardId.HasValue) query = query.Where(u => u.WardId == wardId);
@@ -171,6 +251,39 @@ public class UserController : ControllerBase
         await _db.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    // PATCH api/v1/users/{id}/ward
+    [HttpPatch("{id:guid}/ward")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateOfficerWard(
+        Guid id,
+        [FromBody] UpdateUserWardDto dto)
+    {
+        // 1️⃣ Find user
+        var user = await _db.Users.FindAsync(id);
+        if (user is null)
+            return NotFound(new { message = "User not found" });
+
+        // 2️⃣ Role validation
+        if (user.Role != "Officer")
+            return BadRequest(new { message = "Only Officer ward can be updated" });
+
+        // 3️⃣ Validate ward exists
+        var wardExists = await _db.Wards.AnyAsync(w => w.Id == dto.WardId);
+        if (!wardExists)
+            return BadRequest(new { message = "Invalid ward selected" });
+
+        // 4️⃣ Update
+        user.WardId = dto.WardId;
+
+        await _db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            status = "success",
+            data = MapUser(user)
+        });
     }
 
     // ── helpers ───────────────────────────────────────────────
