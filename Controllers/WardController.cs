@@ -48,9 +48,15 @@ public class WardController : ControllerBase
                 u.Id,
                 u.Name,
                 email = u.Email,
-                phone = u.MobileNumber
+                phone = u.MobileNumber,
+
+                // ✅ ACTIVE ISSUE COUNT
+                activeIssues = _db.IssueRequests.Count(i =>
+                    i.AssignedToId == u.Id &&
+                    i.Status != "Resolved")
             })
             .ToListAsync();
+
 
         return Ok(new { status = "success", data = officers });
     }
