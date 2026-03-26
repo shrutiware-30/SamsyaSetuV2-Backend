@@ -4,6 +4,8 @@ using G2CCRMPortal.Data;
 using G2CCRMPortal.DTOs.Auth;
 using G2CCRMPortal.Models;
 using G2CCRMPortal.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -78,6 +80,9 @@ public class AuthController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CreateStaff([FromBody] AdminSignupDto dto)
     {
+        if (dto.Role is not ("Officer"))
+            return BadRequest(new { status = "fail", message = "Role must be Admin or Officer." });
+
         if (dto.Role == "Officer" && dto.WardId is null)
             return BadRequest(new { status = "fail", message = "WardId is required for Officers." });
 
@@ -122,23 +127,31 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginDto dto)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u =>
+        try
+        {
+            var user = await _db.Users.FirstOrDefaultAsync(u =>
             u.IsActive && (u.Email == dto.EmailOrMobile || u.MobileNumber == dto.EmailOrMobile));
 
-        if (user is null || string.IsNullOrEmpty(user.PasswordHash) ||
-            !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
-        {
-            return Unauthorized(new { message = "Incorrect credentials." });
+
+            if (user is null || string.IsNullOrEmpty(user.PasswordHash) ||
+                !BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash))
+            {
+                return Unauthorized(new { message = "Incorrect credentials." });
+            }
+
+            var token = _jwt.GenerateToken(user);
+            SetTokenCookie(token);
+
+            return Ok(new AuthResponseDto
+            {
+                Token = token,
+                Data = MapUserSummary(user)
+            });
         }
-
-        var token = _jwt.GenerateToken(user);
-        SetTokenCookie(token);
-
-        return Ok(new AuthResponseDto
+        catch (Exception ex)
         {
-            Token = token,
-            Data = MapUserSummary(user)
-        });
+            return BadRequest();
+        }
     }
 
     // POST api/v1/auth/forgot-password
@@ -373,29 +386,34 @@ public class AuthController : ControllerBase
         });
     }
 
-
-
     // ── OTP-based Login ───────────────────────────────────────────
 
     // POST api/v1/auth/login/send-otp
     [HttpPost("login/send-otp")]
     public async Task<IActionResult> LoginSendOtp([FromBody] SendOtpDto dto)
     {
-        var user = dto.Method == "mobile"
+        try
+        {
+            var user = dto.Method == "mobile"
             ? await _db.Users.FirstOrDefaultAsync(u => u.MobileNumber == dto.Identifier && u.IsActive)
             : await _db.Users.FirstOrDefaultAsync(u => u.Email == dto.Identifier && u.IsActive);
 
-        if (user is null)
-            return NotFound(new { message = "No account found with this identifier." });
+            if (user is null)
+                return NotFound(new { message = "No account found with this identifier." });
 
-        var otp = _otp.Generate("login", dto.Identifier);
+            var otp = _otp.Generate("login", dto.Identifier);
 
-        if (dto.Method == "mobile")
-            await _sms.SendOtpAsync(dto.Identifier, otp);
-        else
-            await _email.SendOtpAsync(dto.Identifier, otp);
+            if (dto.Method == "mobile")
+                await _sms.SendOtpAsync(dto.Identifier, otp);
+            else
+                await _email.SendOtpAsync(dto.Identifier, otp);
 
-        return Ok(new { status = "success", message = "OTP sent successfully." });
+            return Ok(new { status = "success", message = "OTP sent successfully." });
+        }
+        catch
+        {
+            return BadRequest(new { status = "fail", message = "Error sending OTP" });
+        }
     }
 
     // POST api/v1/auth/login/verify-otp
@@ -421,6 +439,8 @@ public class AuthController : ControllerBase
             Data = MapUserSummary(user)
         });
     }
+
+
 
     // ── Helpers ───────────────────────────────────────────────────
 

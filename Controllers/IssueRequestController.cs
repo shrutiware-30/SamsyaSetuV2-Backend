@@ -1,11 +1,12 @@
-using System.Security.Claims;
 using G2CCRMPortal.Data;
 using G2CCRMPortal.DTOs.IssueRequest;
 using G2CCRMPortal.Models;
 using G2CCRMPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Build.Framework;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace G2CCRMPortal.Controllers;
 
@@ -16,11 +17,15 @@ public class IssueRequestController : ControllerBase
 {
     private readonly G2CCrmDbContext _db;
     private readonly IUploadService _uploadService;
+    private readonly IEmailService _emailService;
+    private readonly ILogger<IssueRequestController> _logger;
 
-    public IssueRequestController(G2CCrmDbContext db, IUploadService uploadService)
+    public IssueRequestController(G2CCrmDbContext db, IUploadService uploadService, IEmailService emailService, ILogger<IssueRequestController> logger)
     {
         _db = db;
         _uploadService = uploadService;
+        _emailService = emailService;
+        _logger = logger;
     }
 
     // POST api/v1/issues — citizen creates a complaint
@@ -170,10 +175,8 @@ public class IssueRequestController : ControllerBase
         return Ok(new { status = "success", data = issue });
     }
 
-    /// <summary>
     /// GET /api/v1/issues/nearby?latitude=..&amp;longitude=..&amp;radiusMeters=200&amp;artifactId=..
     /// Returns active issues of the same artifact type within the given radius.
-    /// </summary>
     [HttpGet("nearby")]
     [Authorize(Roles = "Citizen")]
     public async Task<IActionResult> GetNearbyIssues(
@@ -307,7 +310,13 @@ public class IssueRequestController : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> CloseIssue(Guid id, [FromBody] UpdateIssueStatusDto dto)
     {
-        var issue = await _db.IssueRequests.FindAsync(id);
+
+        var issue = await _db.IssueRequests
+                .Include(i => i.Citizen)
+                .Include(i => i.Ward)
+                .Include(i => i.Artifact)
+                .FirstOrDefaultAsync(i => i.Id == id);
+
         if (issue is null) return NotFound(new { status = "fail", message = "Issue not found." });
 
         // Only allow closing if already Resolved
@@ -328,9 +337,37 @@ public class IssueRequestController : ControllerBase
             ChangedAt = DateTime.UtcNow
         });
 
+
+        if (!string.IsNullOrWhiteSpace(issue.Citizen?.Email))
+        {
+            await _emailService.SendIssueClosedAsync(
+                issue.Citizen.Email,
+                issue.Citizen.Name,
+                issue.Artifact.Name,
+                issue.Ward.Name,
+                issue.CreatedAt,
+                issue.Id
+            );
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Citizen email not available. IssueId: {IssueId}, CitizenId: {CitizenId}",
+                issue.Id,
+                issue.Citizen?.Id
+            );
+        }
+
+
         await _db.SaveChangesAsync();
 
-        return Ok(new { status = "success", message = "Issue closed." });
+
+        return Ok(new
+        {
+            status = "success",
+            message = "Issue closed and citizen notified successfully."
+        });
+
     }
 
     // GET api/v1/issues/{id}/track — full audit trail
