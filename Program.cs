@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
-namespace SamsyaSetuV2
+namespace G2CCRMPortal
 {
     public class Program
     {
