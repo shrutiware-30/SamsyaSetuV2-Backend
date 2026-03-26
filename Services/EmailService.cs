@@ -19,7 +19,7 @@ public class EmailService : IEmailService
 
     public async Task SendWelcomeAsync(string toEmail, string name)
     {
-        var subject = "Welcome to G2C CRM Portal!";
+        var subject = "Welcome to Samasya Setu : Citizen Grievance Redressal Portal!";
         var body = $"""
             <h1>Welcome, {name}!</h1>
             <p>Your account has been created successfully.</p>
@@ -32,12 +32,15 @@ public class EmailService : IEmailService
     {
         var resetUrl = $"{_config["App:ClientUrl"]}/reset-password?token={resetToken}";
         var subject = "Password Reset Request (valid for 10 minutes)";
-        var body = $"Hello {name},\n\nReset your password here: {resetUrl}\n\nIf you didn't request this, please ignore.";
+        var body = $$"""
+            <h1>Welcome to Samasya Setu : Citizen Grievance Redressal Portal!<h1>
+            <p>Hello {{name}},\n\nReset your password here: {{resetUrl}}\n\nIf you didn't request this, please ignore.</p>
+            """;
         await SendEmailAsync(toEmail, subject, body);
     }
 
     public async Task SendEscalationAsync(string toEmail, string issueId, string wardName)
-    {
+    {{
         var subject = $"Issue Escalation Alert - {wardName}";
         var body = $"""
             <h2>⚠️ Issue Escalation Notice</h2>
@@ -46,18 +49,20 @@ public class EmailService : IEmailService
             <a href="http://localhost:5173/admin/issues/{issueId}">View Issue</a>
             """;
         await SendEmailAsync(toEmail, subject, body);
-    }
+    }}
 
     public async Task SendOtpAsync(string toEmail, string otp)
     {
-        var subject = "Your OTP for G2C CRM Portal";
-        var body = $"""
+        {
+            var subject = "Your OTP for Samasya Setu : Citizen Grievance Redressal Portal!";
+            var body = $"""
             <h1>Your OTP</h1>
             <p>Your one-time password is: <strong>{otp}</strong></p>
             <p>This OTP is valid for 5 minutes.</p>
             <p>Do not share this with anyone.</p>
             """;
-        await SendEmailAsync(toEmail, subject, body);
+            await SendEmailAsync(toEmail, subject, body);
+        }
     }
 
     /// <summary>
@@ -92,10 +97,78 @@ public class EmailService : IEmailService
         await SendEmailAsync(toEmail, subject, body);
     }
 
+    public async Task SendIssueClosedAsync(
+        string toEmail,
+        string citizenName,
+        string issueName,
+        string wardName,
+        DateTime createdAt,
+        Guid issueId)
+    {
+        var subject = "Citizen Issue Resolved and Closed";
 
-    
+        var feedbackUrl = $"{_config["App:ClientUrl"]}/issues/{issueId}";
 
-private async Task SendEmailAsync(string toEmail, string subject, string bodyHtml, CancellationToken ct = default)
+        var body = $"""
+        <html>
+        <body style="font-family: Arial, sans-serif; color: #333;">
+            <p>Dear {citizenName},</p>
+
+            <p>
+                This is to inform you that the following citizen issue has been
+                <strong>successfully resolved and closed</strong>.
+            </p>
+
+            <table cellpadding="6" cellspacing="0">
+                <tr>
+                    <td><strong>Issue:</strong></td>
+                    <td>{issueName}</td>
+                </tr>
+                <tr>
+                    <td><strong>Ward:</strong></td>
+                    <td>{wardName}</td>
+                </tr>
+                <tr>
+                    <td><strong>Raised At:</strong></td>
+                    <td>{createdAt:dd MMM yyyy, hh:mm tt}</td>
+                </tr>
+            </table>
+
+            <p style="margin-top:16px;">
+                Kindly submit your feedback by visiting our portal.
+                Your feedback is valuable and helps us improve our services.
+            </p>
+
+            <p>
+                <a href="{feedbackUrl}"
+                   style="background-color:#1976d2;color:white;
+                          padding:10px 16px;text-decoration:none;
+                          border-radius:4px;">
+                    Submit Feedback
+                </a>
+            </p>
+
+            <p style="margin-top:20px;">
+                Thank you for your cooperation.
+            </p>
+
+            <p>
+                Regards,<br/>
+                <strong>Samasya Setu Portal Team</strong>
+            </p>
+
+            <p style="font-size:12px;color:#777;">
+                This is an automated notification. Please do not reply.
+            </p>
+        </body>
+        </html>
+        """;
+
+        await SendEmailAsync(toEmail, subject, body);
+    }
+
+
+    private async Task SendEmailAsync(string toEmail, string subject, string bodyHtml, CancellationToken ct = default)
 {
     var smtpHost = _config["Email:Host"]!;            // e.g., smtp.gmail.com
     var smtpPort = int.Parse(_config["Email:Port"]!); // 587 or 465
