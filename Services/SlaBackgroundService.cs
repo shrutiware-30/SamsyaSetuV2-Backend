@@ -1,9 +1,7 @@
 namespace G2CCRMPortal.Services;
 
-/// <summary>
 /// Background service that checks SLA breaches every 4 hours.
 /// Runs in the background while the application is running.
-/// </summary>
 public class SlaBackgroundService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;

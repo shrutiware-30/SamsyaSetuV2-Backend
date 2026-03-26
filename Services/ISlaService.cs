@@ -2,15 +2,11 @@ namespace G2CCRMPortal.Services;
 
 public interface ISlaService
 {
-    /// <summary>
     /// Checks all active issues for SLA breaches and sends escalation notifications.
-    /// Runs every 24 hours.
-    /// </summary>
+    /// Runs every 4 hours.
     Task CheckAndEscalateSlaBreachesAsync();
 
-    /// <summary>
     /// Gets breached/escalated issues for admin dashboard.
-    /// </summary>
     Task<List<SlaBreachDto>> GetBreachedIssuesAsync();
 }
 

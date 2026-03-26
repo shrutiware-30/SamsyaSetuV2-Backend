@@ -30,7 +30,7 @@ public class SlaService : ISlaService
                 .Where(i => activeStatuses.Contains(i.Status) 
                          && i.SlaDeadline.HasValue 
                          && i.SlaDeadline < now 
-                         && i.IsBreached)
+                         && !i.IsBreached)
                 .Include(i => i.Ward)
                 .Include(i => i.Citizen)
                 .Include(i => i.AssignedTo)
@@ -100,7 +100,7 @@ public class SlaService : ISlaService
         var now = DateTime.UtcNow;
 
         var breachedIssues = await _db.IssueRequests
-            .Where(i => i.IsBreached)
+            .Where(i => i.IsBreached && i.Status != "Closed")
             .Include(i => i.Artifact)
             .Include(i => i.Ward)
             .Include(i => i.Citizen)
@@ -119,7 +119,7 @@ public class SlaService : ISlaService
                 CitizenName = i.Citizen.Name,
                 AssignedToName = i.AssignedTo != null ? i.AssignedTo.Name : null,
                 EscalationSentAt = i.EscalationSentAt,
-                HoursOverdue = (int)Math.Floor((now - i.SlaDeadline!.Value).TotalHours)
+                HoursOverdue = (int)Math.Floor((now - i.SlaDeadline!.Value).TotalHours/24.0)
             })
             .ToListAsync();
 
